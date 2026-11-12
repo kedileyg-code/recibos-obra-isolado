@@ -290,8 +290,19 @@
           estado.recibosBase = (salvo.recibosBase && salvo.recibosBase.length) ? salvo.recibosBase : DADOS_PRECARREGADOS.recibosBase;
           estado.funcionarios = (salvo.funcionarios && salvo.funcionarios.length) ? salvo.funcionarios : DADOS_PRECARREGADOS.funcionarios;
         }
+        // Se vier chave no link (#k=...), salva automaticamente no aparelho e limpa a barra de endereço
+        const hashMatch = window.location.hash.match(/[#&]k=([^&]+)/);
+        const queryMatch = window.location.search.match(/[?&]k=([^&]+)/);
+        const keyFromUrl = hashMatch ? decodeURIComponent(hashMatch[1]) : (queryMatch ? decodeURIComponent(queryMatch[1]) : '');
+        if (keyFromUrl) {
+          estado.geminiKey = keyFromUrl.trim();
+          salvarEstado();
+          history.replaceState(null, '', window.location.pathname);
+        }
       } catch (e) { console.error(e); }
       document.getElementById('cfgGeminiKey').value = estado.geminiKey || '';
+      const msg = document.getElementById('msgKeySalva');
+      if (msg) msg.style.display = estado.geminiKey ? 'block' : 'none';
       renderizarArquivosBase();
     }
 
@@ -480,7 +491,7 @@
         return data?.choices?.[0]?.message?.content || '';
       }
 
-      // 4. Padrão: Chave do Google Gemini (AIza...)
+      // 4. Padrão: Chave do Google Gemini
       let parts = [{ text: promptTexto }];
       for (const foto of arquivosFoto) {
         const b64 = await fileToBase64(foto);
@@ -492,13 +503,21 @@
         });
       }
 
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      let resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts }] })
       });
 
-      const data = await resp.json();
+      let data = await resp.json();
+      if (data.error) {
+        resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts }] })
+        });
+        data = await resp.json();
+      }
       if (data.error) {
         throw new Error(data.error.message || 'Erro na API Gemini');
       }
